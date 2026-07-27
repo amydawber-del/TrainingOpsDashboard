@@ -9969,8 +9969,19 @@ function calculateMonthlyTrainingReport(rows, selectedMonth) {
     referrals:    { branch: 0, hq: 0, acct: 0, event: 0, refresh: 0 },
     revenue:      { branch: 0, hq: 0, acct: 0, event: 0, refresh: 0 },
     detail: [],
-    uncategorised: []
+    uncategorised: [],
+    // Per-category breakdown — this is what each "individual tab" in the export
+    // is built from, so the tab's own totals always tie out to its own rows.
+    byCategory: {}
   };
+  MTR_CATEGORIES.forEach(function(c) {
+    report.byCategory[c.key] = {
+      trainingDays: { booked: 0, completed: 0, forwardBooked: 0, cancelled: 0 },
+      referrals: 0,
+      revenue: 0,
+      detail: []
+    };
+  });
 
   if(!Array.isArray(rows) || !rows.length || !selectedMonth) return report;
 
@@ -10000,27 +10011,33 @@ function calculateMonthlyTrainingReport(rows, selectedMonth) {
     let contributes = false;
     let contributionKind = null;
 
+    const cat = category ? report.byCategory[category] : null;
+
     // Booked — status is booked and the date is in the selected month
     if(bucket === 'booked' && isDateInSelectedMonth(bookedDate, selectedMonth)) {
       report.trainingDays.booked += days;
+      if(cat) cat.trainingDays.booked += days;
       contributes = true; contributionKind = contributionKind || 'Booked';
     }
 
     // Completed — counts if treated as completed and best date in month
     if(isTreatedCompleted && isDateInSelectedMonth(completedDate, selectedMonth)) {
       report.trainingDays.completed += days;
+      if(cat) cat.trainingDays.completed += days;
       contributes = true; contributionKind = contributionKind || 'Completed';
     }
 
     // Forward Booked — booked-bucket and date strictly after end of selected month
     if(bucket === 'booked' && isDateAfterSelectedMonth(bookedDate, selectedMonth)) {
       report.trainingDays.forwardBooked += days;
+      if(cat) cat.trainingDays.forwardBooked += days;
       contributes = true; contributionKind = contributionKind || 'Forward Booked';
     }
 
     // Cancelled — cancelled bucket, date in selected month
     if(bucket === 'cancelled' && isDateInSelectedMonth(cancelDate, selectedMonth)) {
       report.trainingDays.cancelled += days;
+      if(cat) cat.trainingDays.cancelled += days;
       contributes = true; contributionKind = contributionKind || 'Cancelled';
     }
 
@@ -10028,6 +10045,7 @@ function calculateMonthlyTrainingReport(rows, selectedMonth) {
     const refName = mtrReferralName(r);
     if(refName && category && isDateInSelectedMonth(referralDate, selectedMonth)) {
       report.referrals[category] = (report.referrals[category] || 0) + 1;
+      if(cat) cat.referrals += 1;
       contributes = true; contributionKind = contributionKind || 'Referral';
     }
 
@@ -10037,12 +10055,13 @@ function calculateMonthlyTrainingReport(rows, selectedMonth) {
     if(hasRevenue && category && bucket !== 'cancelled' &&
        isDateInSelectedMonth(revenueDate, selectedMonth)) {
       report.revenue[category] = (report.revenue[category] || 0) + inv;
+      if(cat) cat.revenue += inv;
       contributes = true; contributionKind = contributionKind || 'Revenue';
     }
 
     // --- Drill-down + uncategorised tracking ----------------------------------
     if(contributes) {
-      report.detail.push({
+      const detailEntry = {
         record: r,
         category: category,
         bucket: bucket,
@@ -10051,7 +10070,9 @@ function calculateMonthlyTrainingReport(rows, selectedMonth) {
         referralDate: referralDate,
         bookedDate: bookedDate,
         revenueDate: revenueDate
-      });
+      };
+      report.detail.push(detailEntry);
+      if(cat) cat.detail.push(detailEntry);
 
       if(!category) report.uncategorised.push(r);
     } else if(!category) {
@@ -10234,6 +10255,70 @@ function renderMonthlyTrainingReporting() {
 // ============= EXPORT TO XLSX ====================================================
 // =================================================================================
 
+/**
+ * _buildMtrCategorySheet(catDef, catData)
+ * Builds one worksheet for a single reporting category (e.g. Bespoke HQ Training).
+ * Rows 0-7ish: mini-summary of that category's own totals (so the sums on this
+ * tab always tie back to the rows underneath it).
+ * Then a header row + one row per contributing record for that category only.
+ */
+function _buildMtrCategorySheet(catDef, catData) {
+  const ws = {};
+  _addCell(ws, 0, 0, catDef.label, _hdrStyle('5B4BE7'));
+  _addCell(ws, 0, 1, '', _hdrStyle('5B4BE7'));
+
+  const miniSummary = [
+    { label: 'Training Days — Booked',         value: catData.trainingDays.booked,        type: 'days' },
+    { label: 'Training Days — Completed',      value: catData.trainingDays.completed,     type: 'days' },
+    { label: 'Training Days — Forward Booked', value: catData.trainingDays.forwardBooked, type: 'days' },
+    { label: 'Training Days — Cancelled',       value: catData.trainingDays.cancelled,     type: 'days' },
+    { label: 'Referrals',                       value: catData.referrals,                  type: 'count' },
+    { label: 'Monthly Revenue',                 value: catData.revenue,                    type: 'money' }
+  ];
+  miniSummary.forEach(function(row, i) {
+    const r = i + 1;
+    const alt = i % 2 === 1;
+    _addCell(ws, r, 0, row.label, _cellStyle(alt));
+    if(row.type === 'money') _addCell(ws, r, 1, Number(row.value) || 0, _moneyStyle(alt));
+    else _addCell(ws, r, 1, Number(row.value) || 0, _numStyle(alt));
+  });
+
+  const headerRow = miniSummary.length + 2;
+  const headers = ['Company', 'Status', 'Contribution', 'Referral Source',
+                    'Submitted', 'Training / Booked Date', 'Training Days',
+                    'Invoice Value (£)', 'Trainer'];
+  headers.forEach(function(h, c) { _addCell(ws, headerRow, c, h, _hdrStyle('3D30B5')); });
+
+  const sorted = catData.detail.slice().sort(function(a,b) {
+    const ad = a.bookedDate || a.referralDate || 0;
+    const bd = b.bookedDate || b.referralDate || 0;
+    return (ad ? ad.getTime() : 0) - (bd ? bd.getTime() : 0);
+  });
+
+  sorted.forEach(function(d, ri) {
+    const r = d.record;
+    const row = headerRow + 1 + ri;
+    const alt = ri % 2 === 1;
+    _addCell(ws, row, 0, getCompanyName(r),                              _cellStyle(alt));
+    _addCell(ws, row, 1, r.status || '',                                 _cellStyle(alt));
+    _addCell(ws, row, 2, d.contributionKind || '',                       _cellStyle(alt));
+    _addCell(ws, row, 3, mtrReferralName(r) || '',                       _cellStyle(alt));
+    _addCell(ws, row, 4, _mtrFmtXlsxDate(d.referralDate),                _cellStyle(alt));
+    _addCell(ws, row, 5, _mtrFmtXlsxDate(d.bookedDate),                  _cellStyle(alt));
+    _addCell(ws, row, 6, d.days,                                         _numStyle(alt));
+    _addCell(ws, row, 7, (r.invoiceValue !== null && r.invoiceValue !== undefined && !isNaN(r.invoiceValue)) ? Number(r.invoiceValue) : '', _moneyStyle(alt));
+    _addCell(ws, row, 8, r.trainer || '',                                _cellStyle(alt));
+  });
+
+  ws['!cols'] = [
+    { wch: 28 }, { wch: 12 }, { wch: 16 }, { wch: 22 },
+    { wch: 14 }, { wch: 18 }, { wch: 10 }, { wch: 16 }, { wch: 18 }
+  ];
+  ws['!ref']  = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r: Math.max(headerRow + sorted.length, headerRow), c: headers.length - 1} });
+  ws['!freeze'] = { xSplit: 0, ySplit: headerRow + 1 };
+  return ws;
+}
+
 function _mtrFmtXlsxDate(d) {
   if(!d) return '';
   const dt = d instanceof Date ? d : new Date(d);
@@ -10243,10 +10328,13 @@ function _mtrFmtXlsxDate(d) {
 
 /**
  * exportMonthlyTrainingReport()
- * Build a styled XLSX with up to three sheets:
- *   1. Summary  — the 12 headline figures.
- *   2. Detail   — every contributing record.
- *   3. Uncategorised — only if records were flagged.
+ * Build a styled XLSX with:
+ *   1. Summary       — the headline figures across all categories.
+ *   2. One tab per reporting category (Branch / HQ / Accounting / Events /
+ *      Refresher) — each with its own mini-summary + only that category's
+ *      contributing rows, so the numbers tie straight back to the rows below.
+ *   3. All Detail    — every contributing record, all categories combined.
+ *   4. Uncategorised — only if records were flagged.
  */
 function exportMonthlyTrainingReport() {
   if(typeof XLSX === 'undefined') {
@@ -10311,7 +10399,24 @@ function exportMonthlyTrainingReport() {
   summary['!freeze'] = { xSplit: 0, ySplit: 3 };
   XLSX.utils.book_append_sheet(wb, summary, '📊 Summary');
 
-  // ── Sheet 2: Detail ───────────────────────────────────────────────────────
+  // ── One sheet per reporting category ─────────────────────────────────────
+  // Each tab is scoped to that category only, with its own mini-summary at the
+  // top so the numbers on the tab tie directly back to the rows underneath —
+  // no need to filter/cross-reference the combined Detail sheet by hand.
+  const CATEGORY_TAB_NAMES = {
+    branch:  '🏢 Branch',
+    hq:      '🏬 HQ',
+    acct:    '💰 Accounting',
+    event:   '🎟️ Events',
+    refresh: '🔁 Refresher'
+  };
+  MTR_CATEGORIES.forEach(function(c) {
+    const catData = report.byCategory[c.key];
+    const ws = _buildMtrCategorySheet(c, catData);
+    XLSX.utils.book_append_sheet(wb, ws, CATEGORY_TAB_NAMES[c.key] || c.label.slice(0,31));
+  });
+
+  // ── Sheet: All Detail ─────────────────────────────────────────────────────
   const detail = {};
   const detailHeaders = ['Company', 'Category', 'Status', 'Contribution', 'Referral Source',
                          'Submitted', 'Training / Booked Date', 'Training Days',
@@ -10349,7 +10454,7 @@ function exportMonthlyTrainingReport() {
   ];
   detail['!ref']  = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r: Math.max(sortedDetail.length, 1), c: detailHeaders.length - 1} });
   detail['!freeze'] = { xSplit: 0, ySplit: 1 };
-  XLSX.utils.book_append_sheet(wb, detail, '📋 Detail');
+  XLSX.utils.book_append_sheet(wb, detail, '📋 All Detail');
 
   // ── Sheet 3: Uncategorised (only if records exist) ────────────────────────
   const seen = new Set();
