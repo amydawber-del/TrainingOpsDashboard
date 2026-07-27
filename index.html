@@ -6427,6 +6427,24 @@ function closeReferralModal() {
 
 // ===================== REFERRAL XLSX EXPORT =====================
 
+// How many months back counts as a "recent" status change for export inclusion
+const REFERRAL_STATUS_CHANGE_LOOKBACK_MONTHS = 6;
+
+// True if the given date falls within the last N months (inclusive)
+function _isWithinMonths(date, months) {
+  if(!date) return false;
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - months);
+  return date >= cutoff;
+}
+
+// True if this referral has had a status change within the lookback window —
+// used so referrals outside the selected date range still surface in exports
+// if something about them has moved recently (e.g. an old referral just got booked).
+function _hasRecentStatusChange(r) {
+  return _isWithinMonths(r.statusChangedAt, REFERRAL_STATUS_CHANGE_LOOKBACK_MONTHS);
+}
+
 // Shared helper: get filtered referral rows for export
 function _getReferralExportRows() {
   const range = getReferralDateRange();
@@ -6442,11 +6460,23 @@ function _getReferralExportRows() {
   }
   return allData.filter(r => {
     if(!r.referredBy || !r.referredBy.name) return false;
-    if(!inRange(r)) return false;
+    // Include if the referral date falls in the selected range OR its status
+    // changed recently — so referrals that have just moved (booked/completed/
+    // cancelled) don't silently drop out of the export just because the
+    // original referral is old.
+    if(!inRange(r) && !_hasRecentStatusChange(r)) return false;
     if(statusFilter && r.status !== statusFilter) return false;
     if(nameSearch && !r.referredBy.name.toLowerCase().includes(nameSearch)) return false;
     return true;
   });
+}
+
+// Derive the "Completed On" date for a referral: the booked training date,
+// but only once that date has actually passed (i.e. the session is done).
+function _completedOnDate(r) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  if(r.status === 'Booked' && r.bookedOn && r.bookedOn < today) return r.bookedOn;
+  return null;
 }
 
 // Format a date as DD/MM/YYYY or blank
@@ -6619,11 +6649,20 @@ function _buildReferrerSheet(name, rows) {
   const myRows = rows.filter(r => r.referredBy && r.referredBy.name === name);
 
   // Headers
-  const headers = ['Customer Name','Referral Type / Option','Date Referred','Training Date','Days','Amount Invoiced (£)','Status'];
+  const headers = ['Customer Name','Referral Type / Option','Date Referred','Booked On','Completed On','Days','Amount Invoiced (£)','Status','Status Last Changed','Included Because'];
   headers.forEach(function(h, c) { _addCell(ws, 0, c, h, _hdrStyle('5B4BE7')); });
 
   const today = new Date(); today.setHours(0,0,0,0);
   myRows.sort(function(a,b) { return (a.ts||0) - (b.ts||0); });
+
+  const range = getReferralDateRange();
+  const from = range.from, to = range.to;
+  function inDateRange(r) {
+    if(!r.ts) return _referralPreset === 'all';
+    if(from && r.ts < from) return false;
+    if(to && r.ts > to) return false;
+    return true;
+  }
 
   myRows.forEach(function(r, ri) {
     const row = ri + 1;
@@ -6634,17 +6673,89 @@ function _buildReferrerSheet(name, rows) {
     else if(r.status === 'Booked' && r.bookedOn && r.bookedOn >= today) statusLabel = 'Booked & Upcoming';
     else if(r.status === 'Cancelled') statusLabel = 'Not Converted / Cancelled';
 
+    const completedOn = _completedOnDate(r);
+    const outsideRange = !inDateRange(r) && _hasRecentStatusChange(r);
+    const includedBecause = outsideRange ? 'Status changed in last 6 months' : 'Referral date in range';
+    const noteStyle = outsideRange
+      ? { fill: { fgColor: { rgb: alt ? 'F7F8FC' : 'FFFFFF' } }, font: { italic: true, color: { rgb: '92400E' } }, alignment: { horizontal: 'left' } }
+      : _cellStyle(alt);
+
     _addCell(ws, row, 0, getCompanyName(r),                           _cellStyle(alt));
     _addCell(ws, row, 1, r.trainingOption || '',                       _cellStyle(alt));
     _addCell(ws, row, 2, _fmtXlsxDate(r.ts),                          _cellStyle(alt));
     _addCell(ws, row, 3, r.bookedOn ? _fmtXlsxDate(r.bookedOn) : '',  _cellStyle(alt));
-    _addCell(ws, row, 4, days,                                         _numStyle(alt));
-    _addCell(ws, row, 5, r.invoiceValue !== null && r.invoiceValue !== undefined ? r.invoiceValue : '', _moneyStyle(alt));
-    _addCell(ws, row, 6, statusLabel,                                  _cellStyle(alt));
+    _addCell(ws, row, 4, completedOn ? _fmtXlsxDate(completedOn) : '', _cellStyle(alt));
+    _addCell(ws, row, 5, days,                                         _numStyle(alt));
+    _addCell(ws, row, 6, r.invoiceValue !== null && r.invoiceValue !== undefined ? r.invoiceValue : '', _moneyStyle(alt));
+    _addCell(ws, row, 7, statusLabel,                                  _cellStyle(alt));
+    _addCell(ws, row, 8, r.statusChangedAt ? _fmtXlsxDate(r.statusChangedAt) : '', _cellStyle(alt));
+    _addCell(ws, row, 9, includedBecause,                              noteStyle);
   });
 
-  ws['!cols'] = [{ wch: 28 }, { wch: 24 }, { wch: 14 }, { wch: 14 }, { wch: 8 }, { wch: 18 }, { wch: 24 }];
-  ws['!ref'] = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r: myRows.length, c: 6} });
+  ws['!cols'] = [{ wch: 28 }, { wch: 24 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 8 }, { wch: 18 }, { wch: 24 }, { wch: 16 }, { wch: 28 }];
+  ws['!ref'] = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r: myRows.length, c: 9} });
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+
+  return ws;
+}
+
+// ── SHEET: Running Total ledger — every referral, chronologically, with a
+// running cumulative count per referrer. This is the master audit trail:
+// who referred what, when it was referred, when it was booked, and when
+// the training was actually completed. ──────────────────────────────────
+function _buildRunningTotalSheet(rows) {
+  const ws = {};
+  const range = getReferralDateRange();
+  const from = range.from, to = range.to;
+  function inDateRange(r) {
+    if(!r.ts) return _referralPreset === 'all';
+    if(from && r.ts < from) return false;
+    if(to && r.ts > to) return false;
+    return true;
+  }
+
+  const headers = ['Date Referred','Referrer','Team / Dept','Customer','Training Type / Option','Status','Booked On','Completed On','Value (£)','Running Total (Referrer)','Included Because'];
+  headers.forEach(function(h, c) { _addCell(ws, 0, c, h, _hdrStyle('12152A')); });
+
+  // Chronological order — undated referrals sink to the bottom
+  const sorted = rows.slice().sort(function(a, b) {
+    if(!a.ts && !b.ts) return 0;
+    if(!a.ts) return 1;
+    if(!b.ts) return -1;
+    return a.ts - b.ts;
+  });
+
+  const runningCounts = {};
+
+  sorted.forEach(function(r, i) {
+    const row = i + 1;
+    const alt = i % 2 === 1;
+    const name = r.referredBy.name;
+    runningCounts[name] = (runningCounts[name] || 0) + 1;
+
+    const completedOn = _completedOnDate(r);
+    const outsideRange = !inDateRange(r) && _hasRecentStatusChange(r);
+    const includedBecause = outsideRange ? 'Status changed in last 6 months' : 'Referral date in range';
+    const noteStyle = outsideRange
+      ? { fill: { fgColor: { rgb: alt ? 'F7F8FC' : 'FFFFFF' } }, font: { italic: true, color: { rgb: '92400E' } }, alignment: { horizontal: 'left' } }
+      : _cellStyle(alt);
+
+    _addCell(ws, row, 0, _fmtXlsxDate(r.ts),                          _cellStyle(alt));
+    _addCell(ws, row, 1, name,                                         _cellStyle(alt));
+    _addCell(ws, row, 2, r.referredBy.team || '',                      _cellStyle(alt));
+    _addCell(ws, row, 3, getCompanyName(r),                            _cellStyle(alt));
+    _addCell(ws, row, 4, r.trainingOption || '',                       _cellStyle(alt));
+    _addCell(ws, row, 5, r.status || '',                               _cellStyle(alt));
+    _addCell(ws, row, 6, r.bookedOn ? _fmtXlsxDate(r.bookedOn) : '',   _cellStyle(alt));
+    _addCell(ws, row, 7, completedOn ? _fmtXlsxDate(completedOn) : '', _cellStyle(alt));
+    _addCell(ws, row, 8, r.invoiceValue !== null && r.invoiceValue !== undefined ? r.invoiceValue : '', _moneyStyle(alt));
+    _addCell(ws, row, 9, runningCounts[name],                          _hdrStyle(alt ? '7C6FEA' : '5B4BE7'));
+    _addCell(ws, row, 10, includedBecause,                             noteStyle);
+  });
+
+  ws['!cols'] = [{ wch: 13 }, { wch: 20 }, { wch: 16 }, { wch: 26 }, { wch: 22 }, { wch: 16 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 28 }];
+  ws['!ref'] = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r: sorted.length, c: 10} });
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
 
   return ws;
 }
@@ -6684,9 +6795,14 @@ function _buildAndDownloadReferralXlsx(rows) {
 
   const wb = XLSX.utils.book_new();
 
-  // Sheet 1: Summary matrix
+  // Sheet 1: Running Total ledger — chronological, cumulative per referrer
+  const runningWs = _buildRunningTotalSheet(rows);
+  XLSX.utils.book_append_sheet(wb, runningWs, '📒 Running Total');
+
+  // Sheet 2: Summary matrix
   const summaryWs = _buildSummarySheet(rows);
   XLSX.utils.book_append_sheet(wb, summaryWs, '📊 Summary');
+
 
   // One sheet per referrer
   const referrerNames = Array.from(new Set(rows.map(r => r.referredBy.name))).sort();
