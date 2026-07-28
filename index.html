@@ -1971,8 +1971,8 @@ tr.ref-row:hover td, tr.ref-row:hover { background: var(--s-lavender) !important
 
   <div class="side-group">
     <button class="side-icon active" id="sideBtn-dashboard" onclick="showPage('dashboard')" data-tip="Training Dashboard" aria-label="Training Dashboard"><span>&#128202;</span></button>
-    <button class="side-icon" id="sideBtn-trainerWorkload" onclick="showPage('trainerWorkload')" data-tip="Trainer Workload" aria-label="Trainer Workload"><span>&#128100;</span></button>
-    <button class="side-icon" id="sideBtn-calendar" onclick="showPage('calendar')" data-tip="Training Calendar" aria-label="Training Calendar"><span>&#128197;</span></button>
+    <button class="side-icon" id="sideBtn-trainerWorkload" onclick="scrollToDashboardSection('trainerWorkloadSection')" data-tip="Trainer Workload" aria-label="Trainer Workload"><span>&#128100;</span></button>
+    <button class="side-icon" id="sideBtn-calendar" onclick="scrollToDashboardSection('calendarSection')" data-tip="Training Calendar" aria-label="Training Calendar"><span>&#128197;</span></button>
     <button class="side-icon" id="sideBtn-monthlyReporting" onclick="showPage('monthlyReporting')" data-tip="Monthly Reporting" aria-label="Monthly Reporting"><span>&#128200;</span></button>
     <button class="side-icon" id="sideBtn-allBookings" onclick="showPage('allBookings')" data-tip="All Bookings" aria-label="All Bookings"><span>&#128203;</span></button>
     <button class="side-icon" id="sideBtn-calculator" onclick="showPage('calculator')" data-tip="Training Cost Calculator" aria-label="Training Cost Calculator"><span>&#128176;</span></button>
@@ -2107,6 +2107,14 @@ tr.ref-row:hover td, tr.ref-row:hover { background: var(--s-lavender) !important
 
 <div id="dashboardSection" class="app-page">
 
+<div id="trainerWorkloadSection" style="margin-bottom:24px;">
+    <div class="section-header">
+      <div class="section-title">&#128100; Trainer Workload</div>
+      <span style="font-size:11px;color:var(--text--dark--30);">Last 30 days + upcoming &middot; Next free = 14 working days min</span>
+    </div>
+    <div class="trainer-grid" id="trainerGrid"><div class="kpi-card" style="text-align:center;color:var(--text--dark--30);font-size:12px;grid-column:1/-1;">Loading&#8230;</div></div>
+  </div>
+
 <div id="unassignedSection" style="margin-bottom:24px;">
     <div class="section-header">
       <div class="section-title">&#128276; Unassigned Requests<span class="badge" id="unassignedBadge">0</span></div>
@@ -2135,6 +2143,40 @@ tr.ref-row:hover td, tr.ref-row:hover { background: var(--s-lavender) !important
       <div class="table-wrap">
         <table><thead><tr><th>Submitted</th><th>Company</th><th>Contact</th><th>Option</th><th>Preferred Date</th><th>Trainer</th><th>Actions</th></tr></thead>
         <tbody id="actionBody"><tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text--dark--30);">Connecting&#8230;</td></tr></tbody></table>
+      </div>
+    </div>
+  </div>
+
+<div id="calendarSection" style="margin-bottom:24px;">
+    <div class="section-header">
+      <div class="section-title">&#128197; Training Calendar</div>
+      <div id="icsStatusBar" style="display:flex;align-items:center;gap:10px;font-size:11px;"></div>
+    </div>
+    <div class="cal-grid">
+      <div class="cal-month-card">
+        <div class="cal-month-header">
+          <button class="cal-nav-btn" onclick="calChangeMonth(-1)">&#8592;</button>
+          <span class="cal-month-title" id="calMonthTitle">&#8212;</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <select id="calFilterTrainer" onchange="renderCalendar()" style="font-size:11px;border:1px solid rgba(255,255,255,0.3);border-radius:4px;padding:3px 7px;font-family:Arial,sans-serif;background:rgba(255,255,255,0.1);color:#fff;"><option value="">All Trainers</option></select>
+            <button class="cal-nav-btn" onclick="calChangeMonth(1)">&#8594;</button>
+          </div>
+        </div>
+        <div class="cal-filter-row">
+          <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#fef3c7;border:1px solid #fde68a;"></div><span class="cal-legend-label">Travel</span></div>
+          <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#5B4BE7;"></div><span class="cal-legend-label">Training</span></div>
+          <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#e0e7ff;border:1px solid #a5b4fc;"></div><span class="cal-legend-label">Admin</span></div>
+          <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#fef9c3;border:1px solid #fde047;"></div><span class="cal-legend-label">Bank Holiday</span></div>
+          <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#f3e8ff;border:1px solid #d8b4fe;"></div><span class="cal-legend-label">Team Leave</span></div>
+          <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#e0f2fe;border:1px solid #7dd3fc;"></div><span class="cal-legend-label">Google Cal</span></div>
+          <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#fee2e6;border:1px solid #fda4af;"></div><span class="cal-legend-label">Blocked</span></div>
+        </div>
+        <div class="cal-dow-row"><div class="cal-dow">Mon</div><div class="cal-dow">Tue</div><div class="cal-dow">Wed</div><div class="cal-dow">Thu</div><div class="cal-dow">Fri</div><div class="cal-dow">Sat</div><div class="cal-dow">Sun</div></div>
+        <div class="cal-days" id="calDays"></div>
+      </div>
+      <div class="cal-upcoming-card">
+        <div class="cal-upcoming-header"><span>Upcoming Sessions</span><span id="calUpcomingCount" style="font-size:10px;color:var(--text--dark--30);">&#8212;</span></div>
+        <div class="cal-upcoming-body" id="calUpcomingBody"><div class="cal-upcoming-empty">Loading&#8230;</div></div>
       </div>
     </div>
   </div>
@@ -2230,54 +2272,6 @@ tr.ref-row:hover td, tr.ref-row:hover { background: var(--s-lavender) !important
   </div>
 
 </div><!-- /dashboardSection -->
-
-<!-- ===================== TRAINER WORKLOAD PAGE ===================== -->
-<div class="app-page" id="page-trainerWorkload" style="display:none;">
-<div id="trainerWorkloadSection" style="margin-bottom:24px;">
-    <div class="section-header">
-      <div class="section-title">&#128100; Trainer Workload</div>
-      <span style="font-size:11px;color:var(--text--dark--30);">Last 30 days + upcoming &middot; Next free = 14 working days min</span>
-    </div>
-    <div class="trainer-grid" id="trainerGrid"><div class="kpi-card" style="text-align:center;color:var(--text--dark--30);font-size:12px;grid-column:1/-1;">Loading&#8230;</div></div>
-  </div>
-</div><!-- /page-trainerWorkload -->
-
-<!-- ===================== TRAINER CALENDAR PAGE ===================== -->
-<div class="app-page" id="page-calendar" style="display:none;">
-<div id="calendarSection" style="margin-bottom:24px;">
-    <div class="section-header">
-      <div class="section-title">&#128197; Training Calendar</div>
-      <div id="icsStatusBar" style="display:flex;align-items:center;gap:10px;font-size:11px;"></div>
-    </div>
-    <div class="cal-grid">
-      <div class="cal-month-card">
-        <div class="cal-month-header">
-          <button class="cal-nav-btn" onclick="calChangeMonth(-1)">&#8592;</button>
-          <span class="cal-month-title" id="calMonthTitle">&#8212;</span>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <select id="calFilterTrainer" onchange="renderCalendar()" style="font-size:11px;border:1px solid rgba(255,255,255,0.3);border-radius:4px;padding:3px 7px;font-family:Arial,sans-serif;background:rgba(255,255,255,0.1);color:#fff;"><option value="">All Trainers</option></select>
-            <button class="cal-nav-btn" onclick="calChangeMonth(1)">&#8594;</button>
-          </div>
-        </div>
-        <div class="cal-filter-row">
-          <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#fef3c7;border:1px solid #fde68a;"></div><span class="cal-legend-label">Travel</span></div>
-          <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#5B4BE7;"></div><span class="cal-legend-label">Training</span></div>
-          <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#e0e7ff;border:1px solid #a5b4fc;"></div><span class="cal-legend-label">Admin</span></div>
-          <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#fef9c3;border:1px solid #fde047;"></div><span class="cal-legend-label">Bank Holiday</span></div>
-          <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#f3e8ff;border:1px solid #d8b4fe;"></div><span class="cal-legend-label">Team Leave</span></div>
-          <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#e0f2fe;border:1px solid #7dd3fc;"></div><span class="cal-legend-label">Google Cal</span></div>
-          <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#fee2e6;border:1px solid #fda4af;"></div><span class="cal-legend-label">Blocked</span></div>
-        </div>
-        <div class="cal-dow-row"><div class="cal-dow">Mon</div><div class="cal-dow">Tue</div><div class="cal-dow">Wed</div><div class="cal-dow">Thu</div><div class="cal-dow">Fri</div><div class="cal-dow">Sat</div><div class="cal-dow">Sun</div></div>
-        <div class="cal-days" id="calDays"></div>
-      </div>
-      <div class="cal-upcoming-card">
-        <div class="cal-upcoming-header"><span>Upcoming Sessions</span><span id="calUpcomingCount" style="font-size:10px;color:var(--text--dark--30);">&#8212;</span></div>
-        <div class="cal-upcoming-body" id="calUpcomingBody"><div class="cal-upcoming-empty">Loading&#8230;</div></div>
-      </div>
-    </div>
-  </div>
-</div><!-- /page-calendar -->
 
 <!-- ===================== MONTHLY REPORTING PAGE ===================== -->
 <div class="app-page" id="page-monthlyReporting" style="display:none;">
@@ -3571,6 +3565,22 @@ function fmtDate(d) {
   return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
 }
 
+// ── Local-calendar-day ISO string (YYYY-MM-DD) ───────────────────────
+// IMPORTANT: never use `date.toISOString().split('T')[0]` on a Date that
+// represents a *calendar day* (e.g. a booking date, a working day, a
+// cluster boundary). toISOString() always converts to UTC first — during
+// British Summer Time (UTC+1) that silently rolls local midnight back to
+// 23:00 the previous day, so `.split('T')[0]` returns the WRONG day
+// (one day early). This was the root cause of the Training Calendar
+// showing bookings a day earlier than the actual Booked Date (e.g. a
+// booking for 28 July rendering on 27 July, with the admin day then
+// falling on the 28th instead). Always use this helper instead, which
+// reads the Date object's local Y/M/D components.
+function localISODate(d) {
+  if(!(d instanceof Date) || isNaN(d.getTime())) return '';
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
 function fmtMoney(v) {
   if(v === null || v === undefined || isNaN(v)) return '—';
   return '£' + Math.round(Number(v)).toLocaleString('en-GB',{minimumFractionDigits:0,maximumFractionDigits:0});
@@ -4588,6 +4598,7 @@ function enterDashboard() {
   applyPermVisibility();
   updateCalTrainerFilter();
   setReferralPreset('7d');
+  loadTrainerLocations();
   loadData();
   setInterval(loadData, 5 * 60 * 1000);
   _updateLastActive();
@@ -4696,20 +4707,29 @@ function closeNav() { /* no-op — sidebar is always visible */ }
 // ===================== PAGE ROUTER (icon sidebar) =====================
 const PAGE_ELEMENT_IDS = {
   dashboard:        'dashboardSection',
-  trainerWorkload:  'page-trainerWorkload',
-  calendar:         'page-calendar',
   monthlyReporting: 'page-monthlyReporting',
   allBookings:      'page-allBookings',
   calculator:       'calculatorSection',
 };
 const PAGE_TITLES = {
   dashboard:        'Training Dashboard',
-  trainerWorkload:  'Trainer Workload',
-  calendar:         'Training Calendar',
   monthlyReporting: 'Monthly Reporting',
   allBookings:      'All Bookings',
   calculator:       'Training Cost Calculator',
 };
+
+// Trainer Workload and Training Calendar now live inline on the main
+// dashboard (no longer separate pages) — this shows the dashboard page
+// then smooth-scrolls to the requested section, keeping the sidebar
+// icons useful as quick jump links.
+function scrollToDashboardSection(sectionId) {
+  showPage('dashboard');
+  setTimeout(function () {
+    const el = document.getElementById(sectionId);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 60);
+}
+window.scrollToDashboardSection = scrollToDashboardSection;
 
 function showPage(key) {
   if (!PAGE_ELEMENT_IDS[key]) return;
@@ -4733,8 +4753,6 @@ function showPage(key) {
 
   // Page-specific lazy init / refresh
   if (key === 'calculator' && typeof window._initCalculator === 'function') window._initCalculator();
-  if (key === 'calendar' && typeof window.renderCalendar === 'function') window.renderCalendar();
-  if (key === 'trainerWorkload' && typeof window.renderTrainerWorkload === 'function') window.renderTrainerWorkload();
   if (key === 'monthlyReporting') {
     const content = document.getElementById('monthlyReportingContent');
     if (content && content.style.display === 'none' && typeof window.toggleMonthlyReporting === 'function') window.toggleMonthlyReporting();
@@ -4798,7 +4816,7 @@ function parseAppsScriptData(row, arrayIdx, sheetRowNum) {
   let preferredDate = '';
   if(rawPref && rawPref !== '—' && rawPref !== '--') {
     const d = new Date(rawPref);
-    preferredDate = isNaN(d.getTime()) ? rawPref : d.toISOString().split('T')[0];
+    preferredDate = isNaN(d.getTime()) ? rawPref : localISODate(d);
   }
   const rawInvoice = row[COL.INVOICE_VALUE] ? String(row[COL.INVOICE_VALUE]).replace(/[£$,\s]/g,'') : '';
   const invoiceValue = rawInvoice ? parseFloat(rawInvoice) : null;
@@ -5144,7 +5162,7 @@ function getTrainerLeaveDates(trainerName) {
     const evEnd   = ev.end ? new Date(ev.end) : new Date(evStart.getTime() + 86400000);
     evEnd.setHours(0,0,0,0);
     for(let d = new Date(evStart); d < evEnd; d.setDate(d.getDate() + 1)) {
-      out.add(d.toISOString().split('T')[0]);
+      out.add(localISODate(d));
     }
   });
   return out;
@@ -5212,8 +5230,8 @@ function getFilteredData() {
     if(fStatus && r.status !== fStatus) return false;
     if(fTrainer && r.trainer !== fTrainer) return false;
     if(fOption && r.trainingOption !== fOption) return false;
-    if(fFrom && r.bookedOn && r.bookedOn.toISOString().split('T')[0] < fFrom) return false;
-    if(fTo && r.bookedOn && r.bookedOn.toISOString().split('T')[0] > fTo) return false;
+    if(fFrom && r.bookedOn && localISODate(r.bookedOn) < fFrom) return false;
+    if(fTo && r.bookedOn && localISODate(r.bookedOn) > fTo) return false;
     return true;
   });
 }
@@ -5389,15 +5407,13 @@ async function loadTrainerMetaFromSheet() {
   }
 }
 
-function renderTrainerWorkload() {
-  const grid = document.getElementById('trainerGrid');
+// Shared trainer stats used by both the Trainer Workload cards and the
+// trainer-suggestion logic, so both always agree on the numbers.
+function computeTrainerStats() {
   const trainerUsers = trainers.filter(u => u.role === 'trainer' || u.role === 'admin');
-  if(!trainerUsers.length) { grid.innerHTML = '<div style="padding:16px;color:var(--text--dark--30);">No trainers found.</div>'; return; }
   const today = new Date(); today.setHours(0,0,0,0);
   const y30 = new Date(today); y30.setDate(y30.getDate()-30);
-
-  // Pre-calculate all utilisations to find the most available trainer
-  const trainerStats = trainerUsers.map((t, idx) => {
+  return trainerUsers.map((t, idx) => {
     const meta = getTrainerMeta(t.name);
     const booked = allData.filter(r => r.trainer === t.name && r.status === 'Booked');
     const last30 = booked.filter(r => r.bookedOn && r.bookedOn >= y30 && r.bookedOn <= today);
@@ -5406,6 +5422,15 @@ function renderTrainerWorkload() {
     const utilisationPct = Math.min(100, Math.round((last30.length / Math.max(CAPACITY_30D, 1)) * 100));
     return { t, idx, meta, last30, upcoming, utilisationPct };
   });
+}
+
+function renderTrainerWorkload() {
+  const grid = document.getElementById('trainerGrid');
+  const trainerUsers = trainers.filter(u => u.role === 'trainer' || u.role === 'admin');
+  if(!trainerUsers.length) { grid.innerHTML = '<div style="padding:16px;color:var(--text--dark--30);">No trainers found.</div>'; return; }
+
+  // Pre-calculate all utilisations to find the most available trainer
+  const trainerStats = computeTrainerStats();
   // The most available trainer = lowest utilisation among those not over capacity and not shadowing
   const available = trainerStats.filter(s => s.utilisationPct < 85 && !s.meta.shadowing);
   const mostAvailable = available.length ? available.reduce((a, b) => a.utilisationPct <= b.utilisationPct ? a : b) : null;
@@ -5482,7 +5507,11 @@ function nextWorkingDay(date) {
   return d;
 }
 
-function getNextFreeDate(trainerName) {
+// Core lookup — returns the Date object of the trainer's next free working
+// day (or null if nothing free in the next 90 days). Split out from
+// getNextFreeDate() so the suggestion-scoring logic can use the raw Date
+// (to measure "how many days until free") as well as the formatted string.
+function getNextFreeDateObj(trainerName) {
   const today = new Date(); today.setHours(0,0,0,0);
   const earliest = addWorkingDays(today, 14);
   const booked = allData.filter(r => r.trainer === trainerName && r.status === 'Booked' && r.bookedOn);
@@ -5495,8 +5524,8 @@ function getNextFreeDate(trainerName) {
     clusters.forEach(cluster => {
       const clusterStart = new Date(cluster[0] + 'T12:00:00');
       const clusterEnd   = new Date(cluster[cluster.length - 1] + 'T12:00:00');
-      busyDates.add(prevWorkingDay(clusterStart).toISOString().split('T')[0]);
-      busyDates.add(nextWorkingDay(clusterEnd).toISOString().split('T')[0]);
+      busyDates.add(localISODate(prevWorkingDay(clusterStart)));
+      busyDates.add(localISODate(nextWorkingDay(clusterEnd)));
     });
   });
 
@@ -5507,28 +5536,160 @@ function getNextFreeDate(trainerName) {
   for (let i = 0; i < 90; i++) {
     const d = new Date(earliest); d.setDate(d.getDate() + i);
     if (!isWorkingDay(d)) continue;
-    if (!busyDates.has(d.toISOString().split('T')[0])) return 'Next free: ' + fmtDate(d);
+    if (!busyDates.has(localISODate(d))) return d;
   }
   return null;
 }
 
-function trainersByWorkload() {
-  const today = new Date(); today.setHours(0,0,0,0);
-  // Exclude trainers who are in shadowing mode — they are learning and should not be recommended
-  const eligible = trainers.filter(u => (u.role === 'trainer' || u.role === 'admin') && !getTrainerMeta(u.name).shadowing);
-  const load = {};
-  eligible.forEach(t => { load[t.name] = 0; });
-  allData.forEach(r => {
-    if (r.status !== 'Booked' || !r.bookedOn || r.bookedOn < today) return;
-    if (load[r.trainer] !== undefined) load[r.trainer] += (r.trainingDays || 1);
-  });
-  return [...eligible].sort((a, b) => load[a.name] - load[b.name]);
+function getNextFreeDate(trainerName) {
+  const d = getNextFreeDateObj(trainerName);
+  return d ? 'Next free: ' + fmtDate(d) : null;
 }
 
-function suggestTrainer(position = 0) {
-  const ranked = trainersByWorkload();
-  if (!ranked.length) return null;
-  return ranked[position % ranked.length];
+// ===================== TRAINER PROXIMITY (Product Trainers tab) =====================
+// Trainer lat/lng loaded once per session from the "Product Trainers" tab
+// (Name / Address / Latitude / Longitude / Geocode Status / Last Updated)
+// via the getTrainerLocations Apps Script action. Client-request addresses
+// are geocoded on demand via the geocodeAddress action and cached (session
+// + localStorage) so we don't re-geocode the same address repeatedly.
+window._trainerLocations = window._trainerLocations || [];
+window._geoCache = window._geoCache || (function () {
+  try { return JSON.parse(localStorage.getItem('geoCache') || '{}'); } catch (e) { return {}; }
+})();
+
+async function loadTrainerLocations() {
+  if (!SCRIPT_URL) return;
+  try {
+    const url = SCRIPT_URL + '?action=getTrainerLocations&t=' + Date.now();
+    const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    if (json.success && Array.isArray(json.trainers)) {
+      window._trainerLocations = json.trainers;
+      console.log('[TrainerProximity] Loaded', json.trainers.length, 'trainer location(s).');
+    } else {
+      console.warn('[TrainerProximity] getTrainerLocations error:', json.error);
+    }
+  } catch (err) {
+    console.warn('[TrainerProximity] loadTrainerLocations failed:', err.message);
+  }
+}
+
+// Resolve a free-text address to {lat,lng} via the shared cache, geocoding
+// through Apps Script (Maps service) only on a cache miss.
+async function ensureGeocoded(address) {
+  const key = String(address || '').trim().toLowerCase();
+  if (!key) return null;
+  if (window._geoCache[key]) return window._geoCache[key];
+  if (!SCRIPT_URL) return null;
+  try {
+    const url = SCRIPT_URL + '?action=geocodeAddress&address=' + encodeURIComponent(address) + '&t=' + Date.now();
+    const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    if (json.success && typeof json.lat === 'number' && typeof json.lng === 'number') {
+      window._geoCache[key] = { lat: json.lat, lng: json.lng };
+      try { localStorage.setItem('geoCache', JSON.stringify(window._geoCache)); } catch (e) {}
+      return window._geoCache[key];
+    }
+    console.warn('[TrainerProximity] geocodeAddress error for "' + address + '":', json.error);
+  } catch (err) {
+    console.warn('[TrainerProximity] ensureGeocoded failed for "' + address + '":', err.message);
+  }
+  return null;
+}
+
+// Straight-line ("as the crow flies") distance in miles — same formula the
+// Apps Script Trainer Map sidebar uses, so numbers agree everywhere.
+function haversineMiles(lat1, lng1, lat2, lng2) {
+  const R = 3958.8;
+  const toRad = d => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// The location text to geocode for an unassigned request — non-HQ bookings
+// carry a real address in the "Location" field; HQ bookings (blank Location)
+// resolve to Street HQ's own address.
+function requestLocationText(r) {
+  const loc = (r && r.locationRaw && r.locationRaw.trim()) ? r.locationRaw.trim() : '';
+  return loc || 'Street HQ, North Square, 11-13 Spear St, Manchester M1 1JU';
+}
+
+// Kick off (and cache) geocoding for every currently-unassigned request's
+// location. Call after data loads; re-renders the Unassigned table once new
+// coordinates land so proximity chips can appear without a manual refresh.
+async function prefetchUnassignedGeocodes() {
+  const rows = allData.filter(r => r.status === 'Unassigned');
+  const locs = [...new Set(rows.map(requestLocationText))];
+  let gotNew = false;
+  for (const loc of locs) {
+    const before = window._geoCache[loc.toLowerCase()];
+    await ensureGeocoded(loc);
+    if (!before && window._geoCache[loc.toLowerCase()]) gotNew = true;
+  }
+  if (gotNew) renderUnassigned();
+}
+
+// ===================== TRAINER SUGGESTION (proximity + workload) =====================
+// Suggests the best-suited trainer for a given request row, blending:
+//   • Proximity  — straight-line distance from the trainer's home location
+//                  (Product Trainers tab) to the request's location
+//   • Workload   — sessions in the last 30 days + upcoming sessions
+//                  (same numbers shown on the Trainer Workload cards)
+//   • Next free  — trainers with no free day in the next 90 days are
+//                  de-prioritised even if otherwise close/available
+// Shadowing trainers are excluded (they're still learning).
+// Falls back to workload-only ranking if we don't have coordinates yet
+// for every eligible trainer (e.g. geocoding hasn't resolved this session).
+function suggestTrainer(r) {
+  const stats = computeTrainerStats().filter(s => !s.meta.shadowing);
+  if (!stats.length) return null;
+
+  const locText = requestLocationText(r);
+  const requestGeo = window._geoCache[locText.toLowerCase()] || null;
+
+  const candidates = stats.map(s => {
+    let distanceMiles = null;
+    if (requestGeo && window._trainerLocations.length) {
+      const loc = window._trainerLocations.find(tl => tl.name === s.t.name);
+      if (loc && typeof loc.lat === 'number' && typeof loc.lng === 'number') {
+        distanceMiles = haversineMiles(requestGeo.lat, requestGeo.lng, loc.lat, loc.lng);
+      }
+    }
+    const nextFreeObj = getNextFreeDateObj(s.t.name);
+    const daysUntilFree = nextFreeObj ? Math.round((nextFreeObj - new Date()) / 86400000) : 999;
+    // Lower = busier / less available right now
+    const workloadScore = s.last30.length + (s.upcoming.length * 0.6) + (daysUntilFree * 0.15);
+    return { ...s, distanceMiles, daysUntilFree, workloadScore };
+  });
+
+  // Only weight distance into the score if we have coordinates for every
+  // candidate — a partial picture would unfairly favour whoever happens to
+  // be geocoded, so we fall back to workload-only ranking instead.
+  const useDistance = candidates.every(c => c.distanceMiles !== null);
+  const maxDist = useDistance ? Math.max(1, ...candidates.map(c => c.distanceMiles)) : 1;
+  const maxWork = Math.max(1, ...candidates.map(c => c.workloadScore));
+
+  candidates.forEach(c => {
+    const distNorm = useDistance ? (c.distanceMiles / maxDist) : 0;
+    const workNorm = c.workloadScore / maxWork;
+    // Both normalised 0–1, lower is better on both axes.
+    c.combinedScore = useDistance ? (distNorm * 0.55 + workNorm * 0.45) : workNorm;
+  });
+
+  candidates.sort((a, b) => a.combinedScore - b.combinedScore);
+  const best = candidates[0];
+  return {
+    ...best.t,
+    distanceMiles:    best.distanceMiles,
+    sessionsUpcoming: best.upcoming.length,
+    sessionsLast30:   best.last30.length,
+    nextFree:         getNextFreeDate(best.t.name),
+    usedProximity:    useDistance,
+  };
 }
 
 function renderUnassigned() {
@@ -5540,13 +5701,15 @@ function renderUnassigned() {
   const tbody = document.getElementById('unassignedBody');
   if(!rows.length) { tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="empty-state-icon">✅</div><div class="empty-state-text">No unassigned requests</div></div></td></tr>'; return; }
   const today = new Date(); today.setHours(0,0,0,0);
-  tbody.innerHTML = rows.map((r, rowPos) => {
-    const suggested = suggestTrainer(rowPos);
+  tbody.innerHTML = rows.map((r) => {
+    const suggested = suggestTrainer(r);
     const pref = r.preferredDate ? fmtDate(new Date(r.preferredDate)) : '—';
     const isStale = r.ts && (Date.now() - r.ts) >= STALE_DAYS*86400000;
     const suggColor = suggested ? (suggested.color || '#5B4BE7') : '#5B4BE7';
+    const suggDistance = (suggested && suggested.distanceMiles !== null && suggested.distanceMiles !== undefined)
+      ? ` · ${suggested.distanceMiles.toFixed(1)}mi` : '';
     const suggChip = suggested
-      ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${suggColor}18;color:${suggColor};border:1px solid ${suggColor}33;">💡 ${escHtml(suggested.name)}</span>`
+      ? `<span title="${suggested.nextFree || ''}" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${suggColor}18;color:${suggColor};border:1px solid ${suggColor}33;">💡 ${escHtml(suggested.name)}${suggDistance}</span>`
       : '';
     const skippedFlags = skippedFlagHtml(r);
     return `<tr class="${isStale?'row-stale':''}">
@@ -6145,6 +6308,7 @@ function renderAll() {
   renderCalendar();
   populateFilterDropdowns();
   renderMonthlyTrainingReporting();
+  prefetchUnassignedGeocodes();
 }
 
 // ===================== TOGGLE HELPERS =====================
@@ -6379,8 +6543,8 @@ function renderReferralModalTable() {
   const fFrom = document.getElementById('referralFilterDateFrom').value;
   const fTo   = document.getElementById('referralFilterDateTo').value;
   const fStatus = document.getElementById('referralFilterStatus').value;
-  if(fFrom) rows = rows.filter(r => r.ts && r.ts.toISOString().split('T')[0] >= fFrom);
-  if(fTo)   rows = rows.filter(r => r.ts && r.ts.toISOString().split('T')[0] <= fTo);
+  if(fFrom) rows = rows.filter(r => r.ts && localISODate(r.ts) >= fFrom);
+  if(fTo)   rows = rows.filter(r => r.ts && localISODate(r.ts) <= fTo);
 
   const today = new Date(); today.setHours(0,0,0,0);
   if(_referralModalPreset === 'completed') {
@@ -6811,7 +6975,7 @@ function _buildAndDownloadReferralXlsx(rows) {
     XLSX.utils.book_append_sheet(wb, ws, _safeSheetName(name));
   });
 
-  const dateStr = new Date().toISOString().split('T')[0];
+  const dateStr = localISODate(new Date());
   XLSX.writeFile(wb, 'referral-performance-' + dateStr + '.xlsx', { bookType: 'xlsx', type: 'binary', cellStyles: true });
 }
 // ===================== PROFILE SIDEBAR =====================
@@ -7151,7 +7315,7 @@ function renderCalendar() {
     // Travel & admin days — cluster-aware:
     // Back-to-back days share one travel day before the first and one admin day after the last.
     // Days with gaps each get their own travel and admin day.
-    const clusters = bookingDates.length > 0 ? clusterDates(bookingDates) : [[r.bookedOn.toISOString().split('T')[0]]];
+    const clusters = bookingDates.length > 0 ? clusterDates(bookingDates) : [[localISODate(r.bookedOn)]];
     clusters.forEach(cluster => {
       const clusterStart = new Date(cluster[0] + 'T12:00:00');
       const clusterEnd   = new Date(cluster[cluster.length - 1] + 'T12:00:00');
@@ -7308,9 +7472,7 @@ function openAssignModal(idx) {
   document.getElementById('assignModalCompany').textContent = getCompanyName(r);
   document.getElementById('assignModalContact').textContent = r.contact + ' · ' + r.email;
   document.getElementById('assignModalOption').innerHTML = optionBadge(r.trainingOption) + ' ' + (r.preferredDate ? '· Preferred: ' + fmtDate(new Date(r.preferredDate)) : '');
-  const unassignedRows = allData.filter(x => x.status === 'Unassigned');
-  const rowPos = unassignedRows.findIndex(x => x._idx === idx);
-  const suggested = suggestTrainer(rowPos >= 0 ? rowPos : 0);
+  const suggested = suggestTrainer(r);
   const sel = document.getElementById('assignTrainerSel');
   sel.innerHTML = '<option value="">— Select trainer —</option>';
   trainers.filter(u => (u.role === 'trainer' || u.role === 'admin') && !getTrainerMeta(u.name).shadowing).forEach(t => {
@@ -7324,7 +7486,11 @@ function openAssignModal(idx) {
     const callout = document.createElement('div');
     callout.id = 'assignSuggCallout';
     callout.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:6px;background:' + (suggested.color||'#5B4BE7') + '12;border:1px solid ' + (suggested.color||'#5B4BE7') + '30;font-size:12px;font-weight:600;color:' + (suggested.color||'#5B4BE7') + ';margin-bottom:12px;';
-    callout.innerHTML = '<span style="font-size:15px;">💡</span><span>Suggested based on workload: <strong>' + escHtml(suggested.name) + '</strong></span>';
+    const basisText = suggested.usedProximity
+      ? 'Suggested based on proximity (' + suggested.distanceMiles.toFixed(1) + 'mi) &amp; workload'
+      : 'Suggested based on workload';
+    const nextFreeText = suggested.nextFree ? ' &middot; ' + escHtml(suggested.nextFree) : '';
+    callout.innerHTML = '<span style="font-size:15px;">💡</span><span>' + basisText + ': <strong>' + escHtml(suggested.name) + '</strong>' + nextFreeText + '</span>';
     const formRow = document.querySelector('#assignOverlay .form-row');
     if (formRow) formRow.parentNode.insertBefore(callout, formRow);
   }
@@ -7370,7 +7536,11 @@ function getBookingDates(r) {
   const dates = [];
   for(let i = 0; i < days; i++) {
     const d = new Date(r.bookedOn); d.setDate(d.getDate() + i);
-    dates.push(d.toISOString().split('T')[0]);
+    // FIX: was `.toISOString().split('T')[0]`, which converts to UTC first
+    // and silently rolls local midnight back a day during BST — that was
+    // the root cause of bookings rendering one day early on the calendar.
+    // localISODate() reads the Date's local Y/M/D instead.
+    dates.push(localISODate(d));
   }
   return dates;
 }
@@ -7385,7 +7555,7 @@ function clusterDates(isoArr) {
     if(!cur.length) { cur.push(iso); return; }
     const prev = new Date(cur[cur.length-1] + 'T12:00:00');
     const next = new Date(prev); next.setDate(next.getDate()+1);
-    const nextIso = next.toISOString().split('T')[0];
+    const nextIso = localISODate(next);
     if(nextIso === iso) { cur.push(iso); }
     else { clusters.push(cur); cur = [iso]; }
   });
@@ -7701,7 +7871,7 @@ function checkBookingWarnings() {
       datesToCheck = [];
       for(let i = 0; i < days; i++) {
         const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate()+i);
-        datesToCheck.push(d.toISOString().split('T')[0]);
+        datesToCheck.push(localISODate(d));
       }
     }
   }
@@ -7925,7 +8095,7 @@ function openEditBookingModal(idx) {
   if(!r) return;
   currentEditRow = r;
   document.getElementById('editBookingCompany').textContent = getCompanyName(r);
-  document.getElementById('editBookDate').value = r.bookedOn ? r.bookedOn.toISOString().split('T')[0] : '';
+  document.getElementById('editBookDate').value = r.bookedOn ? localISODate(r.bookedOn) : '';
   document.getElementById('editBookDays').value = r.trainingDays || 1;
   document.getElementById('editBookValue').value = r.invoiceValue || '';
   document.getElementById('editBookReason').value = '';
@@ -7975,7 +8145,7 @@ function checkEditWarnings() {
       datesToCheck = [];
       for(let i = 0; i < days; i++) {
         const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate()+i);
-        datesToCheck.push(d.toISOString().split('T')[0]);
+        datesToCheck.push(localISODate(d));
       }
     }
   }
