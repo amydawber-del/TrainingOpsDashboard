@@ -5288,6 +5288,100 @@ function trainerPill(name) {
   return `<span class="trainer-pill" style="background:${color}22;color:${color};">${escHtml(name)}</span>`;
 }
 
+// ── Inline trainer reassignment (Needs Action / Pending table) ──────
+// Lets anyone viewing Needs Action change the trainer on a Pending
+// booking without opening Confirm Booking. Reuses the existing
+// action=assign endpoint (status is always re-sent as 'Pending' so
+// the booking's status never changes), logs a 'Reassignment' activity
+// entry, and notifies the newly assigned trainer.
+function reassignTrainerDropdown(r) {
+  const list = trainers.filter(u => (u.role === 'trainer' || u.role === 'admin') && !getTrainerMeta(u.name).shadowing);
+  const current = r.trainer || '';
+  const options = list.map(t =>
+    `<option value="${escHtml(t.name)}" ${t.name === current ? 'selected' : ''}>${escHtml(t.name)}</option>`
+  ).join('');
+  const unassignedOpt = current && !list.some(t => t.name === current)
+    ? `<option value="${escHtml(current)}" selected>${escHtml(current)}</option>` : '';
+  return `<select class="reassign-trainer-sel" data-row="${r._idx}"
+      style="font-size:11px;padding:3px 6px;border-radius:5px;border:1px solid var(--ui--underline--light-grey);background:#fff;max-width:140px;"
+      onchange="reassignPendingTrainer(${r._idx}, this)">
+      <option value="">— Unassigned —</option>
+      ${unassignedOpt}${options}
+    </select>`;
+}
+
+async function reassignPendingTrainer(idx, selectEl) {
+  const r = allData[idx];
+  if(!r) return;
+  const newTrainer = selectEl.value;
+  const oldTrainer = r.trainer || '';
+  if(newTrainer === oldTrainer) return; // no-op guard
+
+  selectEl.disabled = true;
+  const params = new URLSearchParams({ action: 'assign', row: r._rowNum, status: 'Pending', trainer: newTrainer });
+
+  try {
+    const res = await fetch(SCRIPT_URL + '?' + params.toString(), { method: 'GET', redirect: 'follow' });
+    // Best-effort read of the response — assign endpoint responds 200 on success
+    let ok = true;
+    try { const json = await res.json(); ok = json.success !== false; } catch(_) { /* non-JSON OK response */ }
+    if(!ok) throw new Error('Backend reported failure');
+
+    // Optimistic local update + re-render
+    r.trainer = newTrainer;
+    selectEl.disabled = false;
+    renderActionNeeded();
+    showToast(newTrainer ? `Trainer updated to ${newTrainer}` : 'Trainer unassigned', 'success');
+
+    logActivity(currentUser?.name || '?', 'Reassigned trainer', getCompanyName(r), `${oldTrainer || 'Unassigned'} → ${newTrainer || 'Unassigned'}`);
+    writeActivityLog({
+      actionType:  'Reassignment',
+      description: 'Trainer reassigned while booking Pending',
+      module:      'Dashboard',
+      recordType:  'Enquiry',
+      recordId:    String(r._rowNum),
+      before:      oldTrainer || 'Unassigned',
+      after:       newTrainer || 'Unassigned',
+      reason:      'Manual',
+      source:      'Dashboard Dropdown',
+      company:     getCompanyName(r),
+      trainer:     newTrainer,
+    });
+
+    // Notify the newly assigned trainer — fire-and-forget, must never
+    // block or roll back the reassignment itself if it fails.
+    if(newTrainer) {
+      notifyTrainerReassigned(r, oldTrainer, newTrainer).catch(e =>
+        console.warn('[Reassign] Notification failed (reassignment itself still succeeded):', e.message));
+    }
+
+  } catch(err) {
+    console.warn('[Reassign] Failed, rolling back:', err.message);
+    selectEl.value = oldTrainer;
+    selectEl.disabled = false;
+    showToast('Could not update trainer — please try again', 'error');
+  }
+}
+
+// Sends a Slack DM to the newly assigned trainer via the Apps Script
+// backend. Requires the backend to handle action=notifyReassign —
+// see notes at bottom of gas-jsonp-patch / Code.gs for the expected
+// Slack message shape. Never throws into the caller's success path;
+// caller treats this as fire-and-forget.
+async function notifyTrainerReassigned(r, oldTrainer, newTrainer) {
+  if(!SCRIPT_URL) return;
+  const params = new URLSearchParams({
+    action:      'notifyReassign',
+    row:         String(r._rowNum),
+    company:     getCompanyName(r),
+    fromTrainer: oldTrainer || 'Unassigned',
+    toTrainer:   newTrainer,
+    by:          currentUser?.name || currentUser?.email || 'Dashboard',
+  });
+  const res = await fetch(SCRIPT_URL + '?' + params.toString(), { method: 'GET', redirect: 'follow' });
+  if(!res.ok) throw new Error('HTTP ' + res.status);
+}
+
 function staleBadge(r, refDate) {
   const date = refDate || r.ts;
   if(!date) return '';
@@ -5752,7 +5846,7 @@ function renderActionNeeded() {
       <td><span style="font-size:11px;">${escHtml(r.contact)}</span></td>
       <td>${optionBadge(r.trainingOption)}</td>
       <td>${pref}</td>
-      <td>${trainerPill(r.trainer)}</td>
+      <td>${reassignTrainerDropdown(r)}</td>
       <td style="white-space:nowrap;display:flex;gap:6px;flex-wrap:wrap;">
         ${canDo('confirmBooking') ? `<button class="btn btn-success btn-sm" onclick="openBookModal(${r._idx})">Confirm Booking</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="openProvisionalModal(${r._idx})" title="Set a provisional discussion date" style="border-color:#f59e0b;color:#92400e;">📅 ${provisionalDates[r._rowNum] ? '<span style="font-weight:700;">'+provisionalDates[r._rowNum].date+'</span>' : 'Provisional'}</button>
