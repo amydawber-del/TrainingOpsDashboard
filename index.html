@@ -5318,7 +5318,18 @@ async function reassignPendingTrainer(idx, selectEl) {
   if(newTrainer === oldTrainer) return; // no-op guard
 
   selectEl.disabled = true;
-  const params = new URLSearchParams({ action: 'assign', row: r._rowNum, status: 'Pending', trainer: newTrainer });
+  // status is re-sent as 'Pending' so the booking's status is never touched —
+  // Code.gs's _assign() detects prevStatus==='Pending' && newStatus==='Pending'
+  // with a trainer change as a reassignment (not a first-time assignment) and
+  // sends the "Trainer Reassigned" Slack message itself, including the `by`
+  // value below as who made the change.
+  const params = new URLSearchParams({
+    action:  'assign',
+    row:     r._rowNum,
+    status:  'Pending',
+    trainer: newTrainer,
+    by:      currentUser?.name || currentUser?.email || 'Someone on the dashboard',
+  });
 
   try {
     const res = await fetch(SCRIPT_URL + '?' + params.toString(), { method: 'GET', redirect: 'follow' });
@@ -5348,38 +5359,12 @@ async function reassignPendingTrainer(idx, selectEl) {
       trainer:     newTrainer,
     });
 
-    // Notify the newly assigned trainer — fire-and-forget, must never
-    // block or roll back the reassignment itself if it fails.
-    if(newTrainer) {
-      notifyTrainerReassigned(r, oldTrainer, newTrainer).catch(e =>
-        console.warn('[Reassign] Notification failed (reassignment itself still succeeded):', e.message));
-    }
-
   } catch(err) {
     console.warn('[Reassign] Failed, rolling back:', err.message);
     selectEl.value = oldTrainer;
     selectEl.disabled = false;
     showToast('Could not update trainer — please try again', 'error');
   }
-}
-
-// Sends a Slack DM to the newly assigned trainer via the Apps Script
-// backend. Requires the backend to handle action=notifyReassign —
-// see notes at bottom of gas-jsonp-patch / Code.gs for the expected
-// Slack message shape. Never throws into the caller's success path;
-// caller treats this as fire-and-forget.
-async function notifyTrainerReassigned(r, oldTrainer, newTrainer) {
-  if(!SCRIPT_URL) return;
-  const params = new URLSearchParams({
-    action:      'notifyReassign',
-    row:         String(r._rowNum),
-    company:     getCompanyName(r),
-    fromTrainer: oldTrainer || 'Unassigned',
-    toTrainer:   newTrainer,
-    by:          currentUser?.name || currentUser?.email || 'Dashboard',
-  });
-  const res = await fetch(SCRIPT_URL + '?' + params.toString(), { method: 'GET', redirect: 'follow' });
-  if(!res.ok) throw new Error('HTTP ' + res.status);
 }
 
 function staleBadge(r, refDate) {
