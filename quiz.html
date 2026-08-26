@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  PRODUCT TRAINING QUIZ — standalone client (single file: HTML + CSS + JS)
+  ============================================================================
+  Lives in the same repo as index.html and uses the same JSONP mechanism —
+  gas-jsonp-patch.js (already in your repo) monkey-patches window.fetch() so
+  a normal fetch(SCRIPT_URL + '?...') call is transparently routed through
+  script-tag JSONP. This file just calls fetch() like the rest of your
+  dashboard code (writeActivityLog, loadUsersList, etc.) — no bespoke JSONP
+  code needed here.
+
+  REQUIRES: gas-jsonp-patch.js sitting next to this file (same folder) —
+  see the <script src="gas-jsonp-patch.js"> tag below.
+
+  Talks to these Code.gs actions (added to the existing doGet switch):
+    quizGetUsers, quizCheckEligibility, quizStart, quizSubmit
+  Nothing here ever sees a correct answer before submission, and the server
+  ignores any score this page might try to send — see the SECURITY MODEL
+  comment above the quiz section in Code.gs.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Street.co.uk — Product Training Quiz</title>
+<style>
+  :root {
+    /* -- Street brand tokens -- */
+    --text--dark--50: #19191e;
+    --brand--black: #242326;
+    --text--dark--40: #4c4d57;
+    --text--dark--30: #777989;
+    --true-black: #000000;
+    --transparent: #fff0;
+    --card-light-grey: #f8f8f8;
+    --text--white--30: #979797;
+    --text--light--40: #b2b2b2;
+    --accent--blue--300: #527dff;
+    --accent-blue--200: #7a9cff;
+    --text--dark--20: #a8aabb;
+    --action-primary-blue: #2147f4;
+    --white: #ffffff;
+    --light-grey: #ccc;
+    --text-dark-10: #dfe0ec;
+    --ui--underline--light-grey: #e5e5e5;
+    --success-green: #bde4b9;
+    --brand--yellow: #f1c238;
+    --brand-accent--mandarin-light: #f6be9d;
+    --accent-blue--100: #a3baff;
+    --brand-accent--dusty-red-light: #f9b4bc;
+    --brand--secondary--lightgreen: #beffd8;
+    --accent-blue--50: #b8caff;
+    --white-smoke: #fde8eb;
+    --nav-opacity: #ffffff0d;
+    --brand-accent--cream: #f5ede5;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100%;
+    color: var(--text--dark--50);
+    background-color: var(--card-light-grey);
+    font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .topbar {
+    background: var(--brand--black);
+    color: var(--white);
+    padding: 18px 20px;
+  }
+  .topbar-inner { max-width: 720px; margin: 0 auto; display: flex; align-items: center; gap: 10px; }
+  .topbar-badge {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--action-primary-blue);
+    box-shadow: 0 0 0 3px var(--nav-opacity);
+    flex: none;
+  }
+  .topbar h1 { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: 0.01em; }
+  .topbar p { margin: 2px 0 0; font-size: 12.5px; color: var(--text--light--40); }
+
+  .wrap { max-width: 720px; margin: 0 auto; padding: 28px 20px 80px; }
+
+  .card {
+    background: var(--white);
+    border: 1px solid var(--ui--underline--light-grey);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 2px rgba(25, 25, 30, 0.04);
+  }
+
+  label {
+    display: block;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--text--dark--40);
+    margin-bottom: 6px;
+  }
+
+  select, input[type="password"], input[type="text"] {
+    width: 100%;
+    padding: 11px 12px;
+    border: 1px solid var(--light-grey);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    margin-bottom: 14px;
+    background: var(--white);
+    color: var(--text--dark--50);
+  }
+  select:focus, input:focus {
+    outline: none;
+    border-color: var(--action-primary-blue);
+    box-shadow: 0 0 0 3px var(--accent-blue--50);
+  }
+
+  button {
+    background: var(--action-primary-blue);
+    color: var(--white);
+    border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-size: 14px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background-color .15s ease;
+  }
+  button:hover:not(:disabled) { background: var(--accent--blue--300); }
+  button:disabled { background: var(--text--dark--20); cursor: not-allowed; }
+
+  .msg { padding: 12px 14px; border-radius: 8px; font-size: 13.5px; margin-bottom: 14px; font-weight: 500; }
+  .msg.info    { background: var(--accent-blue--50); color: var(--text--dark--50); }
+  .msg.error   { background: var(--brand-accent--dusty-red-light); color: var(--text--dark--50); }
+  .msg.success { background: var(--success-green); color: var(--text--dark--50); }
+
+  .q { border-bottom: 1px solid var(--ui--underline--light-grey); padding: 18px 0; }
+  .q:last-child { border-bottom: none; }
+  .q-tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--action-primary-blue);
+    background: var(--accent-blue--50);
+    padding: 3px 9px;
+    border-radius: 999px;
+    margin-bottom: 10px;
+  }
+  .q-text { font-weight: 700; color: var(--text--dark--50); margin-bottom: 12px; font-size: 14.5px; }
+
+  .opt {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    border-radius: 8px;
+    border: 1px solid var(--ui--underline--light-grey);
+    cursor: pointer;
+    transition: border-color .15s ease, background-color .15s ease;
+  }
+  .opt:hover { border-color: var(--accent-blue--200); background: var(--accent-blue--50); }
+  .opt input { margin-top: 3px; accent-color: var(--action-primary-blue); }
+  .opt span { color: var(--text--dark--40); }
+
+  .progress { font-size: 12.5px; color: var(--text--dark--30); font-weight: 700; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+
+  .score-big { font-size: 2.6rem; font-weight: 800; margin: 4px 0; color: var(--action-primary-blue); }
+  .score-big.good { color: #1a7a3d; }
+  .score-big.warn { color: #a06b00; }
+  .score-big.low  { color: #b3273f; }
+
+  .breakdown-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px dashed var(--ui--underline--light-grey); font-size: 13px; color: var(--text--dark--40);
+  }
+  .breakdown-row:last-child { border-bottom: none; }
+  .pill { font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .pill.correct   { background: var(--success-green); color: #1a7a3d; }
+  .pill.incorrect { background: var(--brand-accent--dusty-red-light); color: #b3273f; }
+
+  .hidden { display: none !important; }
+  .footer-note { font-size: 12px; color: var(--text--dark--30); margin-top: 24px; text-align: center; }
+  .sub { color: var(--text--dark--30); margin: 0 0 20px; font-size: 13.5px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <span class="topbar-badge"></span>
+    <div>
+      <h1>Street.co.uk — Product Training Quiz</h1>
+      <p>Active users only &middot; one attempt per calendar month</p>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <p class="sub" id="subHeading">Loading&hellip;</p>
+
+  <!-- STEP 1: pick yourself -->
+  <div class="card" id="stepSelect">
+    <label for="userSelect">Who are you?</label>
+    <select id="userSelect">
+      <option value="">Loading users&hellip;</option>
+    </select>
+    <div id="eligibilityMsg"></div>
+  </div>
+
+  <!-- STEP 2: PIN -->
+  <div class="card hidden" id="stepPin">
+    <label for="pinInput">Enter your PIN</label>
+    <input type="password" id="pinInput" inputmode="numeric" maxlength="8" placeholder="••••" />
+    <div id="pinMsg"></div>
+    <button id="startBtn">Start quiz</button>
+  </div>
+
+  <!-- STEP 3: the quiz -->
+  <div class="card hidden" id="stepQuiz">
+    <div class="progress" id="quizProgress"></div>
+    <div id="questionList"></div>
+    <div id="submitMsg"></div>
+    <button id="submitBtn">Submit quiz</button>
+  </div>
+
+  <!-- STEP 4: result -->
+  <div class="card hidden" id="stepResult">
+    <div id="resultSummary"></div>
+    <div id="resultBreakdown"></div>
+  </div>
+
+  <p class="footer-note">Results are shared with your manager for one-to-ones.</p>
+</div>
+
+<!-- Same JSONP mechanism the rest of the dashboard uses — must sit in the
+     same folder as this file. -->
+<script src="gas-jsonp-patch.js"></script>
+
+<script>
+  // ============================================================
+  // CONFIG — same deployed web app URL as index.html's SCRIPT_URL.
+  // ============================================================
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzCvBhFSPyyoaVsui0DCxvGQQa0V7e_UCJ5LfqvcSysTHTFlNRcx4ewlET5TyouJ0ZYow/exec';
+
+  // ---- backend helper — plain fetch(), same as the rest of the dashboard.
+  // gas-jsonp-patch.js (loaded above) transparently routes this through
+  // JSONP under the hood, so nothing JSONP-specific needs to live here.
+  async function gasFetch(action, params) {
+    const usp = new URLSearchParams(Object.assign({ action: action }, params || {}));
+    const res = await fetch(SCRIPT_URL + '?' + usp.toString(), { method: 'GET', redirect: 'follow' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }
+
+  // ---- app state (kept in memory only) ----
+  var state = { userId: null, fullName: null, pin: null, sessionToken: null, questions: [], answers: {}, usersById: {} };
+
+  var els = {
+    subHeading: document.getElementById('subHeading'),
+    stepSelect: document.getElementById('stepSelect'),
+    userSelect: document.getElementById('userSelect'),
+    eligibilityMsg: document.getElementById('eligibilityMsg'),
+    stepPin: document.getElementById('stepPin'),
+    pinInput: document.getElementById('pinInput'),
+    pinMsg: document.getElementById('pinMsg'),
+    startBtn: document.getElementById('startBtn'),
+    stepQuiz: document.getElementById('stepQuiz'),
+    quizProgress: document.getElementById('quizProgress'),
+    questionList: document.getElementById('questionList'),
+    submitMsg: document.getElementById('submitMsg'),
+    submitBtn: document.getElementById('submitBtn'),
+    stepResult: document.getElementById('stepResult'),
+    resultSummary: document.getElementById('resultSummary'),
+    resultBreakdown: document.getElementById('resultBreakdown'),
+  };
+
+  function msgHtml(kind, text) { return '<div class="msg ' + kind + '">' + text + '</div>'; }
+  function show(el) { el.classList.remove('hidden'); }
+  function hide(el) { el.classList.add('hidden'); }
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // ---- boot: load active users ----
+  (async function loadUsers() {
+    try {
+      const result = await gasFetch('quizGetUsers', {});
+      if (!result.success) {
+        els.subHeading.textContent = '';
+        els.eligibilityMsg.innerHTML = msgHtml('error', 'Could not load users: ' + (result.error || 'unknown error'));
+        return;
+      }
+      els.subHeading.textContent = 'Select your name to begin.';
+      els.userSelect.innerHTML = '<option value="">-- Select your name --</option>' +
+        result.users.map(function (u) {
+          return '<option value="' + u.userId + '">' + escapeHtml(u.fullName) + (u.deptTeam ? ' (' + escapeHtml(u.deptTeam) + ')' : '') + '</option>';
+        }).join('');
+      result.users.forEach(function (u) { state.usersById[u.userId] = u; });
+    } catch (err) {
+      els.subHeading.textContent = '';
+      els.eligibilityMsg.innerHTML = msgHtml('error', 'Could not load users: ' + err.message);
+    }
+  })();
+
+  els.userSelect.addEventListener('change', async function () {
+    var userId = els.userSelect.value;
+    hide(els.stepPin);
+    els.eligibilityMsg.innerHTML = '';
+    if (!userId) return;
+
+    state.userId = userId;
+    state.fullName = state.usersById[userId] ? state.usersById[userId].fullName : '';
+    els.eligibilityMsg.innerHTML = msgHtml('info', 'Checking eligibility&hellip;');
+
+    try {
+      const result = await gasFetch('quizCheckEligibility', { userId: userId });
+      if (!result.success) {
+        els.eligibilityMsg.innerHTML = msgHtml('error', result.error || 'Could not check eligibility.');
+        return;
+      }
+      if (result.alreadyCompleted) {
+        els.eligibilityMsg.innerHTML = msgHtml('success', 'You’ve already completed the ' + result.quizMonth + ' quiz. Nothing more to do this month &mdash; nice work.');
+        return;
+      }
+      els.eligibilityMsg.innerHTML = '';
+      show(els.stepPin);
+      els.pinInput.value = '';
+      els.pinInput.focus();
+    } catch (err) {
+      els.eligibilityMsg.innerHTML = msgHtml('error', 'Could not check eligibility: ' + err.message);
+    }
+  });
+
+  els.startBtn.addEventListener('click', async function () {
+    var pin = els.pinInput.value.trim();
+    if (!pin) { els.pinMsg.innerHTML = msgHtml('error', 'Enter your PIN.'); return; }
+    state.pin = pin;
+    els.startBtn.disabled = true;
+    els.pinMsg.innerHTML = msgHtml('info', 'Building your quiz&hellip;');
+
+    try {
+      const result = await gasFetch('quizStart', { userId: state.userId, pin: state.pin });
+      els.startBtn.disabled = false;
+      if (!result.success) {
+        els.pinMsg.innerHTML = msgHtml('error', result.message || result.error || 'Could not start the quiz.');
+        return;
+      }
+      els.pinMsg.innerHTML = '';
+      state.sessionToken = result.sessionToken;
+      state.questions = result.questions;
+      state.answers = {};
+      renderQuiz();
+      hide(els.stepSelect); hide(els.stepPin); show(els.stepQuiz);
+    } catch (err) {
+      els.startBtn.disabled = false;
+      els.pinMsg.innerHTML = msgHtml('error', 'Something went wrong starting the quiz: ' + err.message);
+    }
+  });
+
+  function renderQuiz() {
+    els.quizProgress.textContent = state.questions.length + ' questions — answer all, then submit';
+    els.questionList.innerHTML = state.questions.map(function (q, i) {
+      var opts = ['A', 'B', 'C', 'D'].map(function (letter) {
+        return '<label class="opt">' +
+          '<input type="radio" name="q_' + q.questionId + '" value="' + letter + '" onchange="setAnswer(\'' + q.questionId + '\',\'' + letter + '\')" />' +
+          '<span>' + escapeHtml(q.options[letter]) + '</span></label>';
+      }).join('');
+      return '<div class="q">' +
+        '<span class="q-tag">' + escapeHtml(q.area) + (q.category ? ' &middot; ' + escapeHtml(q.category) : '') + '</span>' +
+        '<div class="q-text">' + (i + 1) + '. ' + escapeHtml(q.text) + '</div>' +
+        opts + '</div>';
+    }).join('');
+  }
+
+  function setAnswer(questionId, letter) { state.answers[questionId] = letter; }
+  window.setAnswer = setAnswer;
+
+  els.submitBtn.addEventListener('click', async function () {
+    var unanswered = state.questions.filter(function (q) { return !state.answers[q.questionId]; }).length;
+    if (unanswered > 0) {
+      els.submitMsg.innerHTML = msgHtml('error', unanswered + ' question(s) still unanswered.');
+      return;
+    }
+    els.submitBtn.disabled = true;
+    els.submitMsg.innerHTML = msgHtml('info', 'Submitting&hellip;');
+
+    var answers = state.questions.map(function (q) {
+      return { questionId: q.questionId, selected: state.answers[q.questionId] || '' };
+    });
+
+    try {
+      const result = await gasFetch('quizSubmit', {
+        sessionToken: state.sessionToken,
+        userId: state.userId,
+        pin: state.pin,
+        answers: JSON.stringify(answers)
+      });
+      els.submitBtn.disabled = false;
+      if (!result.success) {
+        els.submitMsg.innerHTML = msgHtml('error', result.message || result.error || 'Submission failed.');
+        if (['ALREADY_COMPLETED', 'SESSION_EXPIRED', 'INVALID_SUBMISSION'].indexOf(result.code) !== -1) hide(els.stepQuiz);
+        return;
+      }
+      els.submitMsg.innerHTML = '';
+      renderResult(result);
+      hide(els.stepQuiz);
+      show(els.stepResult);
+    } catch (err) {
+      els.submitBtn.disabled = false;
+      els.submitMsg.innerHTML = msgHtml('error', 'Submission failed: ' + err.message);
+    }
+  });
+
+  function renderResult(result) {
+    var cls = result.scorePercent >= 80 ? 'good' : (result.scorePercent >= 50 ? 'warn' : 'low');
+    els.resultSummary.innerHTML =
+      '<p class="sub">Thanks, ' + escapeHtml(state.fullName || '') + ' &mdash; here’s how you did:</p>' +
+      '<div class="score-big ' + cls + '">' + result.scorePercent + '%</div>' +
+      '<p class="sub">' + result.correctCount + ' of ' + result.totalQuestions + ' correct. This has been recorded.</p>';
+
+    if (result.breakdown && result.breakdown.length) {
+      els.resultBreakdown.innerHTML = '<hr style="border:none;border-top:1px solid var(--ui--underline--light-grey);margin:16px 0;">' +
+        result.breakdown.map(function (b) {
+          return '<div class="breakdown-row"><span>' + escapeHtml(b.text) + '</span>' +
+            '<span class="pill ' + (b.isCorrect ? 'correct' : 'incorrect') + '">' + (b.isCorrect ? 'Correct' : 'Correct answer: ' + b.correctAnswer) + '</span></div>';
+        }).join('');
+    }
+  }
+</script>
+</body>
+</html>
