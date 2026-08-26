@@ -566,6 +566,56 @@ select.filter-select:focus, input.filter-input:focus { outline: none; border-col
 .req-equip-chip:hover { border-color:var(--accent--blue--300);color:var(--action-primary-blue); }
 .req-equip-chip input[type=checkbox] { width:13px;height:13px;accent-color:var(--action-primary-blue);cursor:pointer; }
 .req-equip-chip:has(input:checked) { border-color:var(--action-primary-blue);background:#eff3ff;color:var(--action-primary-blue); }
+
+/* ── SIDEBAR REORG: flyout groups (added) ───────────────────── */
+.side-flyout { position: relative; }
+.side-flyout-menu {
+  display: none;
+  position: absolute;
+  left: 58px;
+  top: 0;
+  background: var(--s-navy-mid);
+  border: 1px solid var(--s-navy-border);
+  border-radius: 10px;
+  padding: 6px;
+  min-width: 190px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+  z-index: 320;
+  flex-direction: column;
+  gap: 2px;
+}
+.side-flyout:hover .side-flyout-menu,
+.side-flyout:focus-within .side-flyout-menu {
+  display: flex;
+}
+.side-flyout-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  color: rgba(255,255,255,0.8);
+  text-decoration: none;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+}
+.side-flyout-item span:first-child { font-size: 15px; display:flex; }
+.side-flyout-item:hover { background: rgba(91,75,231,0.28); color: #fff; }
+.side-flyout-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.32);
+  padding: 4px 10px 2px;
+}
 </style>
 
 <style id="street-theme">
@@ -1980,12 +2030,16 @@ tr.ref-row:hover td, tr.ref-row:hover { background: var(--s-lavender) !important
 
   <div class="side-divider"></div>
 
-  <div class="side-group">
-    <a class="side-icon" href="https://docs.google.com/spreadsheets/d/1r_HODYw7kIMpWm8TNcXwJmZQuk0lsjVR6SEl2teytJM/edit" target="_blank" rel="noopener" data-tip="Bookings Spreadsheet" aria-label="Bookings Spreadsheet"><span>&#128196;</span></a>
-    <a class="side-icon" href="https://amydawber-del.github.io/Street-training-request/" target="_blank" rel="noopener" data-tip="Training Request Form" aria-label="Training Request Form"><span>&#128221;</span></a>
-    <a class="side-icon" href="https://amydawber-del.github.io/TilTracker/" target="_blank" rel="noopener" data-tip="Time in Lieu Tracker" aria-label="Time in Lieu Tracker"><span>&#9201;</span></a>
-    <a class="side-icon" href="https://app.hubspot.com/contacts/7658438/objects/0-5/views/all/board?prefetch=" target="_blank" rel="noopener" data-tip="HubSpot Tickets" aria-label="HubSpot Tickets"><span>&#127760;</span></a>
-    <a class="side-icon" href="quiz.html" target="_blank" rel="noopener" data-tip="Product Training Quiz" aria-label="Product Training Quiz"><span>&#129504;</span></a>
+  <div class="side-flyout" tabindex="0">
+    <button class="side-icon" data-tip="Tools &amp; Links" aria-label="Tools and Links"><span>&#128279;</span></button>
+    <div class="side-flyout-menu">
+      <div class="side-flyout-label">Tools &amp; Links</div>
+      <a class="side-flyout-item" href="https://docs.google.com/spreadsheets/d/1r_HODYw7kIMpWm8TNcXwJmZQuk0lsjVR6SEl2teytJM/edit" target="_blank" rel="noopener"><span>&#128196;</span><span>Bookings Spreadsheet</span></a>
+      <a class="side-flyout-item" href="https://amydawber-del.github.io/Street-training-request/" target="_blank" rel="noopener"><span>&#128221;</span><span>Training Request Form</span></a>
+      <a class="side-flyout-item" href="https://amydawber-del.github.io/TilTracker/" target="_blank" rel="noopener"><span>&#9201;</span><span>Time in Lieu Tracker</span></a>
+      <a class="side-flyout-item" href="https://app.hubspot.com/contacts/7658438/objects/0-5/views/all/board?prefetch=" target="_blank" rel="noopener"><span>&#127760;</span><span>HubSpot Tickets</span></a>
+      <a class="side-flyout-item" href="quiz.html" target="_blank" rel="noopener"><span>&#129504;</span><span>Product Training Quiz</span></a>
+    </div>
   </div>
 
   <div class="side-divider"></div>
@@ -1996,10 +2050,14 @@ tr.ref-row:hover td, tr.ref-row:hover { background: var(--s-lavender) !important
 
   <div class="side-spacer"></div>
 
-  <div class="side-group">
-    <button class="side-icon admin-only" onclick="openTrainerModal()" data-tip="Manage Users &amp; Permissions" aria-label="Manage Users and Permissions"><span>&#128100;</span></button>
-    <button class="side-icon admin-only" onclick="openCalSettings()" data-tip="Calendar Settings" aria-label="Calendar Settings"><span>&#9881;&#65039;</span></button>
-    <button class="side-icon admin-only" id="navTestBtn" onclick="testConnection(document.getElementById('navTestBtn'))" data-tip="Test Connection" aria-label="Test Connection"><span>&#128269;</span></button>
+  <div class="side-flyout admin-only" tabindex="0">
+    <button class="side-icon" data-tip="Admin" aria-label="Admin"><span>&#128737;&#65039;</span></button>
+    <div class="side-flyout-menu" style="left:58px; top:auto; bottom:0;">
+      <div class="side-flyout-label">Admin</div>
+      <button class="side-flyout-item" onclick="openTrainerModal()"><span>&#128100;</span><span>Manage Users &amp; Permissions</span></button>
+      <button class="side-flyout-item" onclick="openCalSettings()"><span>&#9881;&#65039;</span><span>Calendar Settings</span></button>
+      <button class="side-flyout-item" id="navTestBtn" onclick="testConnection(document.getElementById('navTestBtn'))"><span>&#128269;</span><span>Test Connection</span></button>
+    </div>
   </div>
 
   <div class="side-divider"></div>
