@@ -1,37 +1,40 @@
 /**
  * =====================================================================
- * STREET TRAINING DASHBOARD — HOLIDAY ICS FIX PATCH  v2.2
+ * STREET TRAINING DASHBOARD — HOLIDAY ICS FIX PATCH  v2.3
  * =====================================================================
  *
- * Changes vs v2.1
+ * Changes vs v2.2
  * ---------------
- *  • DEAD_FRAGMENT updated to cover BOTH dead Humaans URL shapes:
- *      - app.humaans.io/api/public-holidays/ical/  (old)
- *      - app.humaans.io/calendar-feeds/            (new — also CORS-blocked)
- *    All three proxy attempts (direct, corsproxy.io, allorigins) for both
- *    URLs were returning 403/408. The patch now intercepts both silently.
+ *  • Humaans calendar-feeds URLs are NO LONGER treated as dead. v2.2
+ *    wiped them from localStorage on every load and blanked the Cal
+ *    Settings input, which is why the leave feed kept "unsyncing".
  *
- *  • Leave feed (calLeaveEvents) also blocked — after loadIcsData the
- *    patch no longer waits for a leave result before dismissing the banner.
+ *  • Humaans feeds are now fetched via the Apps Script backend
+ *    (?action=getIcs&url=…) which uses UrlFetchApp and is not subject
+ *    to browser CORS. The public CORS proxies are only used as a
+ *    fallback if the Apps Script route fails.
  *
- *  • localStorage cleanup covers both URL shapes.
+ *  • Only the genuinely dead legacy shape
+ *    (app.humaans.io/api/public-holidays/ical/) is still blocked.
  *
- *  • getBookingDates / clusterDates crash fix (inline patch):
- *    Some Sheets rows return a bookedOn value that produces an invalid
- *    Date object — likely a blank cell or a non-ISO string from the
- *    Apps Script response. The crash manifests as:
- *      RangeError: Invalid time value at Date.toISOString
- *      at clusterDates / getBookingDates / renderCalendar
- *    This patch wraps window.getBookingDates with an isValid guard so
- *    a bad bookedOn row is skipped instead of throwing.
+ *  • bankHolidayMap backfill (GOV.UK) is kept as a last resort for
+ *    public holidays if every route fails.
+ *
+ *  • getBookingDates invalid-Date guard, Cal Settings tidy-up and
+ *    retry-button fix are unchanged from v2.2.
+ *
+ * REQUIRES: a `getIcs` action in Code.gs (see gas-getIcs-snippet.gs).
  * =====================================================================
  */
 (function () {
   'use strict';
 
-  // Both Humaans URL shapes are dead / CORS-blocked
+  // Genuinely dead — old token-based public-holiday endpoint only
   var DEAD_FRAGMENTS = [
     'app.humaans.io/api/public-holidays/ical/',
+  ];
+  // Feeds we route through Apps Script (CORS-safe)
+  var PROXY_FRAGMENTS = [
     'app.humaans.io/calendar-feeds/',
   ];
 
@@ -39,15 +42,19 @@
     if (typeof url !== 'string') return false;
     return DEAD_FRAGMENTS.some(function (f) { return url.includes(f); });
   }
+  function _isProxied(url) {
+    if (typeof url !== 'string') return false;
+    return PROXY_FRAGMENTS.some(function (f) { return url.includes(f); });
+  }
 
-  // Synchronously wipe dead URLs from localStorage
+  // Synchronously wipe only the legacy dead URL from localStorage
   (function () {
     try {
       ['calHolidayIcs', 'calLeaveIcs'].forEach(function (key) {
         var val = localStorage.getItem(key) || '';
         if (_isDead(val)) {
           localStorage.removeItem(key);
-          _log('Removed dead Humaans URL from localStorage (' + key + ').');
+          _log('Removed legacy dead Humaans URL from localStorage (' + key + ').');
         }
       });
     } catch (e) {}
@@ -74,26 +81,56 @@
     bootstrap();
   }
 
-  // ── 1. Intercept fetchIcs — return empty string for any dead URL ──
+  // ── 1. fetchIcs — block legacy dead URL, route Humaans via Apps Script ──
   function patch_fetchIcs() {
     var _orig = window.fetchIcs;
     window.fetchIcs = async function (url) {
       if (_isDead(url)) {
-        _log('Blocked dead Humaans URL — no network request made: ' + url);
+        _log('Blocked legacy dead Humaans URL — no network request made: ' + url);
         return '';
+      }
+      if (_isProxied(url)) {
+        var viaGas = await _fetchIcsViaAppsScript(url);
+        if (viaGas) return viaGas;
+        _log('Apps Script route failed — falling back to browser proxies for: ' + url);
       }
       return _orig.apply(this, arguments);
     };
   }
 
-  // ── 2. After loadIcsData, backfill holidays from bankHolidayMap ───
+  // Fetch an ICS body through the Apps Script web app.
+  // Expects { success: true, ics: "BEGIN:VCALENDAR…" } from ?action=getIcs
+  async function _fetchIcsViaAppsScript(url) {
+    var base = (typeof window.SCRIPT_URL !== 'undefined' && window.SCRIPT_URL)
+            || (typeof SCRIPT_URL !== 'undefined' && SCRIPT_URL) || '';
+    if (!base) { _log('SCRIPT_URL not set — cannot proxy ICS via Apps Script.'); return ''; }
+    try {
+      var res  = await fetch(base + '?action=getIcs&url=' + encodeURIComponent(url) + '&t=' + Date.now(),
+                             { method: 'GET', redirect: 'follow' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      var json = await res.json();
+      if (!json || !json.success || typeof json.ics !== 'string') {
+        throw new Error((json && json.error) || 'No ICS in response');
+      }
+      if (!json.ics.includes('BEGIN:VCALENDAR') && !json.ics.includes('BEGIN:VEVENT')) {
+        throw new Error('Not valid iCal data');
+      }
+      _log('ICS fetched via Apps Script (' + json.ics.length + ' chars): ' + url);
+      return json.ics;
+    } catch (e) {
+      _log('Apps Script ICS fetch error: ' + (e && e.message));
+      return '';
+    }
+  }
+
+  // ── 2. After loadIcsData, backfill public holidays if still empty ──
   function patch_loadIcsData() {
     var _orig = window.loadIcsData;
     window.loadIcsData = async function () {
       await _orig.apply(this, arguments);
       if (window.calIcsEvents && window.calIcsEvents.length > 0) {
-        _log('Holiday ICS feed returned data — no backfill needed.');
-        _dismissFeedBanner();
+        _log('Holiday feed returned data — no backfill needed.');
+        if (window.calLeaveEvents && window.calLeaveEvents.length > 0) _dismissFeedBanner();
         return;
       }
       _backfill();
@@ -101,9 +138,6 @@
   }
 
   // ── _backfill: read bankHolidayMap (no extra network request) ─────
-  //
-  // bankHolidayMap: { 'YYYY-MM-DD': 'Holiday Name' }
-  // Date construction uses multi-argument form to avoid BST/UTC shifts.
   function _backfill(attempt) {
     attempt = attempt || 0;
     var map  = window.bankHolidayMap;
@@ -122,38 +156,24 @@
     window.calIcsEvents = keys.map(function (dateStr) {
       var parts = dateStr.split('-');
       var y = parseInt(parts[0], 10);
-      var m = parseInt(parts[1], 10) - 1; // 0-based month
+      var m = parseInt(parts[1], 10) - 1;
       var d = parseInt(parts[2], 10);
-      var start = new Date(y, m, d);      // local midnight, BST-safe
-      var end   = new Date(y, m, d + 1);  // next local midnight (exclusive)
-      return { summary: map[dateStr], start: start, end: end, type: 'holiday' };
+      return { summary: map[dateStr], start: new Date(y, m, d), end: new Date(y, m, d + 1), type: 'holiday' };
     });
 
-    _log('Synthesised ' + window.calIcsEvents.length
-      + ' bank holidays from bankHolidayMap (no extra network request).');
-
+    _log('Synthesised ' + window.calIcsEvents.length + ' bank holidays from bankHolidayMap.');
     _updateStatusBar();
-    _dismissFeedBanner();
     if (typeof window.renderCalendar === 'function') window.renderCalendar();
   }
 
   // ── 3. Guard getBookingDates against invalid Date objects ─────────
-  //
-  // Some Sheets rows have a bookedOn value that new Date() can't parse
-  // (blank cell, non-ISO string, etc.) — this produces an Invalid Date
-  // object whose .toISOString() throws "RangeError: Invalid time value",
-  // crashing clusterDates → renderCalendar / renderTrainerWorkload.
-  //
-  // The patch wraps window.getBookingDates: if bookedOn is invalid, the
-  // row is treated as having no dates (returns []) rather than throwing.
   function patch_getBookingDates() {
     if (typeof window.getBookingDates !== 'function') {
-      _log('getBookingDates not found — skipping guard patch (will retry on next bootstrap).');
+      _log('getBookingDates not found — skipping guard patch.');
       return;
     }
     var _orig = window.getBookingDates;
     window.getBookingDates = function (r) {
-      // Guard: if bookedOn is set but invalid, bail early
       if (r && r.bookedOn) {
         var t = r.bookedOn instanceof Date ? r.bookedOn.getTime() : NaN;
         if (isNaN(t)) {
@@ -165,7 +185,7 @@
     };
   }
 
-  // ── 4. Update Cal Settings modal ─────────────────────────────────
+  // ── 4. Cal Settings modal — only clear the legacy dead URL ─────────
   function patch_calSettings() {
     var _origOpen = window.openCalSettings;
     if (typeof _origOpen !== 'function') return;
@@ -181,8 +201,8 @@
         var hint = input.nextElementSibling;
         if (hint && hint.classList.contains('form-hint')) {
           hint.innerHTML =
-            'Leave blank — public holidays load automatically from GOV.UK '
-            + '(England &amp; Wales). Only fill in if you have a working ICS URL.';
+            'Humaans calendar-feeds URLs are fetched via Apps Script. '
+            + 'If left blank or the feed fails, public holidays fall back to GOV.UK (England &amp; Wales).';
         }
       }
     };
@@ -194,8 +214,7 @@
       mutations.forEach(function (m) {
         m.addedNodes.forEach(function (node) {
           if (!node || node.nodeType !== 1 || node.id !== 'ux-feed-banner') return;
-          var btns = node.querySelectorAll('button');
-          btns.forEach(function (btn) {
+          node.querySelectorAll('button').forEach(function (btn) {
             if (btn.textContent.includes('Retry')) {
               btn.onclick = function () {
                 window.loadIcsData().catch(function (e) {
@@ -215,8 +234,7 @@
     var bar = document.getElementById('icsStatusBar');
     if (!bar) return;
     var n    = window.calIcsEvents ? window.calIcsEvents.length : 0;
-    var pill = '<span class="ics-status"><span class="ics-dot ok"></span>'
-             + n + ' holidays (GOV.UK)</span>';
+    var pill = '<span class="ics-status"><span class="ics-dot ok"></span>' + n + ' holidays (GOV.UK)</span>';
     var sep  = '<span style="color:var(--text--dark--20);margin:0 4px;">|</span>';
     if (bar.innerHTML.includes('Holiday feed error') || bar.innerHTML.includes('holidays loaded')) {
       bar.innerHTML = bar.innerHTML.replace(
@@ -228,7 +246,6 @@
   }
 
   function _dismissFeedBanner() {
-    // Don't block banner dismissal waiting for the leave feed — it's also dead
     var banner = document.getElementById('ux-feed-banner');
     if (!banner) return;
     banner.style.transition = 'opacity 0.4s';
